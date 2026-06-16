@@ -7,7 +7,7 @@ import pandas as pd
 import pdfplumber
 
 PDF_DIR = Path('TCE/TCE/pdf-files-2006-2026')
-OUT_PATH = Path('processed\sample_6.parquet')
+OUT_PATH = Path('processed\data_all.parquet')
 
 # Right column starts consistently at x ~311 across all documents.
 # Splitting at page_width/2 (~297) cleanly isolates it from the counselor roster.
@@ -115,26 +115,39 @@ def main():
     all_pdfs = find_pdfs_with_indice()
     print(f'Available PDFs with índice (source_id >= 1990): {len(all_pdfs)}')
 
-    random.seed(99)
-    sample_ids = sorted(random.sample(sorted(all_pdfs.keys()), 6))
-    print(f'Selected source_ids: {sample_ids}\n')
+    # Pega TODOS os IDs encontrados e ordena
+    all_ids = sorted(all_pdfs.keys())
+    print(f'Selected all {len(all_ids)} source_ids. Starting extraction...\n')
 
     records = []
-    for sid in sample_ids:
+    # Agora o loop roda em cima de todos os PDFs
+    for sid in all_ids:
         path = all_pdfs[sid]
         print(f'Extracting source_id={sid} ({path.name})...')
-        record = extract_pdf(sid, path)
-        indice = json.loads(record['indice'])
-        print(f'  pages={record["total_pages"]} | date={record["header_date_raw"]} | indice_entries={len(indice)} | text_chars={len(record["full_text"]):,}')
-        for entry in indice:
-            bold_marker = '●' if entry.get('bold') else '○'
-            print(f'    p.{entry["page"]:>3}  {bold_marker}  {entry["act"]}')
-        records.append(record)
+        
+        try:
+            record = extract_pdf(sid, path)
+            indice = json.loads(record['indice'])
+            print(f'  pages={record["total_pages"]} | date={record["header_date_raw"]} | indice_entries={len(indice)} | text_chars={len(record["full_text"]):,}')
+            
+            # Comentando a impressão detalhada do índice para o terminal não ficar poluído ao rodar todos os arquivos
+            # for entry in indice:
+            #     bold_marker = '●' if entry.get('bold') else '○'
+            #     print(f'    p.{entry["page"]:>3}  {bold_marker}  {entry["act"]}')
+            
+            records.append(record)
+        except Exception as e:
+            print(f"  ❌ Error processing source_id={sid}: {e}")
 
     df = pd.DataFrame(records)
+    
+    # Cria a pasta de destino caso ela não exista
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
     df.to_parquet(OUT_PATH, index=False)
     print(f'\nSaved → {OUT_PATH}')
-    print(df[['source_id', 'edition_number', 'header_date_raw', 'total_pages', 'has_indice']].to_string())
+    print(df[['source_id', 'edition_number', 'header_date_raw', 'total_pages', 'has_indice']].head(10).to_string())
+    print(f"... e mais {len(df) - 10} registros.")
 
 
 if __name__ == '__main__':
